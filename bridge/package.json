@@ -1,0 +1,14 @@
+{
+  "name": "displayos-bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev":   "node --watch usb-bridge.js",
+    "start": "node usb-bridge.js"
+  },
+  "dependencies": {
+    "@serialport/parser-delimiter": "^12.0.0",
+    "serialport": "^12.0.0",
+    "ws": "^8.16.0"
+  }
+}

@@ -38,13 +38,18 @@ function saveConfig(cfg) { writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 
 
 let config = loadConfig();
 
+// USB device registry: screenId → { caps, display, fw, connectedAt }
+const devices = new Map();
+// Sensor readings: screenId → { type → { value, unit, ts } }
+const sensors = new Map();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/display", express.static(path.join(__dirname, "../client/dist")));
 app.use("/admin",   express.static(path.join(__dirname, "../admin/dist")));
 
-// REST API
+// ── REST API ─────────────────────────────────────────────────────────────────
 app.get("/api/screens",      (req, res) => res.json(config.screens));
 app.get("/api/screens/:id",  (req, res) => { const s = config.screens[req.params.id]; s ? res.json(s) : res.status(404).json({ error:"Not found" }); });
 app.put("/api/screens/:id",  (req, res) => { const id=req.params.id; config.screens[id]={...config.screens[id],...req.body,id}; saveConfig(config); broadcast({type:"SCREEN_UPDATED",screenId:id,screen:config.screens[id]}); res.json(config.screens[id]); });
@@ -83,25 +88,63 @@ app.delete("/api/screens/:sid/widgets/:wid", (req, res) => {
   res.json({ok:true});
 });
 
-app.get("/api/stats", async (req, res) => res.json(await getStats()));
+app.get("/api/stats",  async (req, res) => res.json(await getStats()));
 app.get("/api/config", (req, res) => res.json(config));
 app.put("/api/config", (req, res) => { config={...config,...req.body}; saveConfig(config); broadcast({type:"CONFIG_UPDATED",config}); res.json(config); });
 app.post("/api/voice", (req, res) => res.json(handleVoiceCommand(req.body.transcript, req.body.screenId)));
 
-// WebSocket
+// Device endpoints
+app.get("/api/devices", (req, res) => res.json(Object.fromEntries(devices)));
+app.get("/api/devices/:id/sensors", (req, res) => {
+  const s = sensors.get(req.params.id);
+  s ? res.json(s) : res.status(404).json({ error:"No sensors for this device" });
+});
+// Push a direct command to a device via its bridge
+app.post("/api/devices/:id/cmd", (req, res) => {
+  broadcast({ type:"DEVICE_CMD", screenId:req.params.id, ...req.body }, "_bridge");
+  res.json({ ok:true });
+});
+
+// Status endpoint — consumed by launcher status page + external monitoring
+app.get("/api/status", async (req, res) => {
+  const screenStats = {};
+  for (const [screenId] of Object.entries(config.screens)) {
+    const connected = [...clients.values()].filter(m => m.screenId === screenId && !m.isBridge).length;
+    screenStats[screenId] = { connected };
+  }
+  res.json({
+    uptime:   Math.floor(process.uptime()),
+    wsClients: [...clients.values()].filter(m => !m.isBridge).length,
+    screens:  screenStats,
+    devices:  Object.fromEntries(devices),
+  });
+});
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
-const clients = new Map();
+const clients = new Map(); // ws → { screenId, clientId, isBridge }
 
 wss.on("connection", (ws, req) => {
-  const url = new URL(req.url, "http://localhost");
+  const url      = new URL(req.url, "http://localhost");
   const screenId = url.searchParams.get("screen") || "main";
+  const isBridge = screenId === "_bridge";
   const clientId = uuidv4();
-  clients.set(ws, { screenId, clientId });
-  console.log(`[WS] +${clientId} → "${screenId}" (${clients.size} connected)`);
-  ws.send(JSON.stringify({ type:"INIT", screenId, screen:config.screens[screenId]||null, config }));
+  clients.set(ws, { screenId, clientId, isBridge });
+
+  if (!isBridge) {
+    console.log(`[WS] +${clientId} → "${screenId}" (${clients.size} connected)`);
+    ws.send(JSON.stringify({ type:"INIT", screenId, screen:config.screens[screenId]||null, config }));
+  } else {
+    console.log(`[WS] bridge connected`);
+  }
+
   ws.on("message", raw => { try { handleClientMessage(ws, JSON.parse(raw), screenId); } catch {} });
-  ws.on("close", () => { clients.delete(ws); console.log(`[WS] -${clientId} (${clients.size} remaining)`); });
+  ws.on("close",   ()  => {
+    clients.delete(ws);
+    if (!isBridge) console.log(`[WS] -${clientId} (${clients.size} remaining)`);
+    else           console.log(`[WS] bridge disconnected`);
+  });
 });
 
 function broadcast(msg, targetScreen=null) {
@@ -113,13 +156,87 @@ function broadcast(msg, targetScreen=null) {
   }
 }
 
+// ── Message handling ──────────────────────────────────────────────────────────
 function handleClientMessage(ws, msg, screenId) {
-  if (msg.type === "VOICE_TRANSCRIPT") {
-    const result = handleVoiceCommand(msg.transcript, screenId);
-    ws.send(JSON.stringify({ type:"VOICE_RESULT", ...result }));
+  switch (msg.type) {
+    case "VOICE_TRANSCRIPT": {
+      const result = handleVoiceCommand(msg.transcript, screenId);
+      ws.send(JSON.stringify({ type:"VOICE_RESULT", ...result }));
+      break;
+    }
+    case "DEVICE_CONNECTED":
+      onDeviceConnected(msg);
+      break;
+    case "DEVICE_DISCONNECTED":
+      onDeviceDisconnected(msg.screenId);
+      break;
+    case "DEVICE_EVENT":
+      handleDeviceEvent(ws, msg);
+      break;
+    case "DEVICE_SENSOR":
+      handleDeviceSensor(msg);
+      break;
   }
 }
 
+// ── Device management ─────────────────────────────────────────────────────────
+function onDeviceConnected({ screenId, caps=[], display={}, fw="?" }) {
+  devices.set(screenId, { screenId, caps, display, fw, connectedAt: Date.now() });
+
+  // Auto-create a minimal screen config if this device is new
+  if (!config.screens[screenId]) {
+    config.screens[screenId] = {
+      id: screenId,
+      name: `USB Device (${screenId})`,
+      layout: "grid",
+      background: "#0a0a0f",
+      voiceEnabled: false,
+      wakeWord: "hey display",
+      // Default widgets matched to device capabilities
+      widgets: caps.includes("clock") ? [
+        { id:uuidv4(), type:"clock", x:0, y:0, w:4, h:2, config:{ showDate:true, showSeconds:true } }
+      ] : []
+    };
+    saveConfig(config);
+    console.log(`[Device] Auto-created screen: "${screenId}"`);
+  }
+
+  console.log(`[Device] Connected: "${screenId}" caps:[${caps}] display:${JSON.stringify(display)}`);
+  broadcast({ type:"DEVICE_UPDATED", devices: Object.fromEntries(devices) });
+}
+
+function onDeviceDisconnected(screenId) {
+  devices.delete(screenId);
+  console.log(`[Device] Disconnected: "${screenId}"`);
+  broadcast({ type:"DEVICE_UPDATED", devices: Object.fromEntries(devices) });
+}
+
+function handleDeviceEvent(ws, msg) {
+  const { screenId, event, id, action } = msg;
+  console.log(`[Device] Event from "${screenId}": ${event} id=${id} action=${action}`);
+
+  // Map button presses to voice commands for easy extensibility
+  if (event === "button" && action === "press") {
+    const cmds = { 1: "clear screen", 2: "add clock" }; // customise per device
+    const transcript = cmds[id];
+    if (transcript) {
+      const result = handleVoiceCommand(transcript, screenId);
+      ws.send(JSON.stringify({ type:"VOICE_RESULT", ...result }));
+    }
+  }
+
+  // Broadcast so admin / other clients can observe device events
+  broadcast({ type:"DEVICE_EVENT", ...msg });
+}
+
+function handleDeviceSensor(msg) {
+  const { screenId, type, value, unit } = msg;
+  if (!sensors.has(screenId)) sensors.set(screenId, {});
+  sensors.get(screenId)[type] = { value, unit, ts: Date.now() };
+  broadcast({ type:"SENSOR_UPDATED", screenId, sensor: type, value, unit });
+}
+
+// ── Voice commands ────────────────────────────────────────────────────────────
 function handleVoiceCommand(transcript, screenId) {
   const t = (transcript||"").toLowerCase().trim();
   console.log(`[Voice] "${t}" on "${screenId}"`);
@@ -146,5 +263,6 @@ httpServer.listen(PORT, () => {
   console.log(`\n◈ DisplayOS running on :${PORT}`);
   console.log(`  Display → http://localhost:${PORT}/display?screen=main`);
   console.log(`  Admin   → http://localhost:${PORT}/admin`);
+  console.log(`  Status  → http://localhost:${PORT}/api/status`);
   console.log(`  LAN     → http://[your-ip]:${PORT}/display?screen=main\n`);
 });

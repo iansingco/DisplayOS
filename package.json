@@ -2,12 +2,13 @@
   "name": "displayos",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["server", "client", "admin"],
+  "workspaces": ["server", "client", "admin", "bridge"],
   "scripts": {
-    "dev": "concurrently -n server,client,admin -c cyan,blue,magenta \"npm run dev --workspace=server\" \"npm run dev --workspace=client\" \"npm run dev --workspace=admin\"",
-    "install:all": "npm install"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "start":  "node launcher.js",
+    "dev":    "node launcher.js",
+    "bridge": "npm run dev --workspace=bridge",
+    "server": "npm run dev --workspace=server",
+    "client": "npm run dev --workspace=client",
+    "admin":  "npm run dev --workspace=admin"
   }
 }
