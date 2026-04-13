@@ -8,7 +8,9 @@ export function useDisplaySocket(screenId) {
 
   const connect = useCallback(() => {
     const host = window.location.hostname;
-    const port = window.location.port || 3333;
+    // In dev (Vite on :5173) WS server is always on :3333.
+    // In prod the display is served from :3333 so location.port is correct.
+    const port = import.meta.env.DEV ? 3333 : (window.location.port || 3333);
     const url = `ws://${host}:${port}?screen=${screenId}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
