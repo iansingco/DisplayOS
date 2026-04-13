@@ -37,34 +37,37 @@ const tag  = (name)    => col(name, `[${name.padEnd(6)}]`);
 const info = (s)       => console.log(`${colors.launch}◈  ${s}${R}`);
 
 // ── Service definitions ───────────────────────────────────────────────────────
+// Use "npm" with shell:true everywhere — most reliable across Win/Mac/Linux.
+// npm.cmd on Windows, npm on Unix, both resolved correctly via the shell.
+const NPM = "npm";
 const services = [
   {
     name:  "server",
     dir:   "server",
-    cmd:   "node",
-    args:  ["--watch", "index.js"],
+    cmd:   NPM,
+    args:  ["run", "dev"],
     env:   { PORT: String(PORT) },
     skip:  false,
   },
   {
     name:  "client",
     dir:   "client",
-    cmd:   "npx",
-    args:  ["vite", "--port", String(CLIENT_PORT)],
+    cmd:   NPM,
+    args:  ["run", "dev"],
     skip:  !!process.env.NO_CLIENT,
   },
   {
     name:  "admin",
     dir:   "admin",
-    cmd:   "npx",
-    args:  ["vite", "--port", String(ADMIN_PORT)],
+    cmd:   NPM,
+    args:  ["run", "dev"],
     skip:  !!process.env.NO_ADMIN,
   },
   {
     name:  "bridge",
     dir:   "bridge",
-    cmd:   "node",
-    args:  ["--watch", "usb-bridge.js"],
+    cmd:   NPM,
+    args:  ["run", "dev"],
     env:   {
       SERVER_WS:   `ws://localhost:${PORT}`,
       SERVER_HTTP: `http://localhost:${PORT}`,
@@ -79,7 +82,7 @@ const procs = new Map(); // name → { proc, status, lines }
 function startService(svc) {
   const cwd  = path.join(__dirname, svc.dir);
   const env  = { ...process.env, ...(svc.env || {}) };
-  const proc = spawn(svc.cmd, svc.args, { cwd, env, shell: process.platform === "win32" });
+  const proc = spawn(svc.cmd, svc.args, { cwd, env, shell: true });
 
   const state = { proc, status: "starting", lines: [] };
   procs.set(svc.name, state);
