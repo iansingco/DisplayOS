@@ -79,7 +79,7 @@ const procs = new Map(); // name → { proc, status, lines }
 function startService(svc) {
   const cwd  = path.join(__dirname, svc.dir);
   const env  = { ...process.env, ...(svc.env || {}) };
-  const proc = spawn(svc.cmd, svc.args, { cwd, env, shell: false });
+  const proc = spawn(svc.cmd, svc.args, { cwd, env, shell: process.platform === "win32" });
 
   const state = { proc, status: "starting", lines: [] };
   procs.set(svc.name, state);
