@@ -210,12 +210,12 @@ function normalizeUrl(url) {
     // YouTube watch → embed
     if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/watch') {
       const v = u.searchParams.get('v');
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=0`;
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
     }
     // youtu.be short links
     if (u.hostname === 'youtu.be') {
       const v = u.pathname.slice(1);
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=0`;
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
     }
     // YouTube playlist
     if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/playlist') {

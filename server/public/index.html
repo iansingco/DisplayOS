@@ -49,15 +49,15 @@ function normalizeUrl(url) {
     const u = new URL(url);
     if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/watch') {
       const v = u.searchParams.get('v');
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1`;
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
     }
     if (u.hostname === 'youtu.be') {
       const v = u.pathname.slice(1);
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1`;
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
     }
     if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/playlist') {
       const list = u.searchParams.get('list');
-      if (list) return `https://www.youtube.com/embed/videoseries?list=${list}&autoplay=1`;
+      if (list) return `https://www.youtube.com/embed/videoseries?list=${list}&autoplay=1&mute=1`;
     }
     if (u.hostname === 'www.twitch.tv' || u.hostname === 'twitch.tv') {
       const parts = u.pathname.split('/').filter(Boolean);
