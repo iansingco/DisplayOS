@@ -46,8 +46,14 @@ const sensors = new Map();
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Simple no-build UI — always available
+app.use(express.static(path.join(__dirname, "public")));
+// React builds (optional, created by npm run build in client/admin)
 app.use("/display", express.static(path.join(__dirname, "../client/dist")));
 app.use("/admin",   express.static(path.join(__dirname, "../admin/dist")));
+// Fallback routes so /view and / always work even without React builds
+app.get("/view", (req, res) => res.sendFile(path.join(__dirname, "public/view.html")));
+app.get("/",     (req, res) => res.sendFile(path.join(__dirname, "public/index.html")));
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 app.get("/api/screens",      (req, res) => res.json(config.screens));

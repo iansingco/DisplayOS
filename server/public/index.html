@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DisplayOS Setup</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0f; color: #c8c8e8; font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+.wrap { width: 100%; max-width: 520px; }
+h1 { font-size: 1rem; letter-spacing: .2em; color: #7faaff; margin-bottom: 2rem; font-weight: normal; }
+label { font-size: .7rem; opacity: .5; letter-spacing: .15em; display: block; margin-bottom: .4rem; text-transform: uppercase; }
+input, select { width: 100%; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #e0e0ff; padding: .6rem .8rem; font-size: .9rem; font-family: inherit; outline: none; margin-bottom: 1.25rem; }
+button { width: 100%; padding: .65rem; background: rgba(127,255,127,.1); border: 1px solid rgba(127,255,127,.3); border-radius: 6px; color: #7fff7f; cursor: pointer; font-family: inherit; font-size: .9rem; margin-bottom: .75rem; }
+button:hover { background: rgba(127,255,127,.18); }
+.btn-sec { background: rgba(127,170,255,.08); border-color: rgba(127,170,255,.2); color: #7faaff; }
+.hint { font-size: .7rem; opacity: .4; margin-top: -.9rem; margin-bottom: 1.25rem; }
+.status { font-size: .75rem; padding: .5rem .75rem; border-radius: 6px; margin-top: 1rem; display: none; }
+.ok  { background: rgba(127,255,127,.08); border: 1px solid rgba(127,255,127,.2); color: #7fff7f; }
+.err { background: rgba(255,100,100,.08); border: 1px solid rgba(255,100,100,.2); color: #ff9f9f; }
+.divider { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 1.5rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>◈ DisplayOS — Quick Setup</h1>
+
+  <label>Paste a URL to display</label>
+  <input id="url" type="text" placeholder="https://... (image, GIF, or website)" autofocus />
+  <div class="hint" id="detect"></div>
+
+  <label>Screen</label>
+  <select id="screen"><option value="main">main</option></select>
+
+  <button onclick="apply()">Show on Display</button>
+  <a href="/view?screen=main" target="_blank"><button class="btn-sec" type="button">↗ Open Display</button></a>
+
+  <hr class="divider">
+
+  <label>Or add individual widgets</label>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="palette"></div>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const TYPES = [
+  { type:'clock',   label:'🕐 Clock',   config:{} },
+  { type:'weather', label:'⛅ Weather', config:{ city:'New York' } },
+  { type:'stats',   label:'📊 Stats',   config:{} },
+];
+
+// Populate screen selector
+fetch('/api/screens').then(r=>r.json()).then(screens => {
+  const sel = document.getElementById('screen');
+  sel.innerHTML = '';
+  Object.values(screens).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = `${s.name} (/${s.id})`;
+    sel.appendChild(o);
+  });
+});
+
+// Widget palette
+const pal = document.getElementById('palette');
+TYPES.forEach(t => {
+  const b = document.createElement('button');
+  b.textContent = t.label;
+  b.style.cssText = 'width:auto;padding:.4rem .75rem;font-size:.75rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#c8c8e8;margin-bottom:.5rem';
+  b.onclick = () => addWidget(t.type, t.config);
+  pal.appendChild(b);
+});
+
+// Auto-detect type from URL
+document.getElementById('url').addEventListener('input', function() {
+  const u = this.value.toLowerCase().split('?')[0];
+  const hint = document.getElementById('detect');
+  if (!u) { hint.textContent = ''; return; }
+  if (/\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u))
+    hint.textContent = 'Detected: Image / GIF → will display full screen';
+  else if (u.startsWith('http'))
+    hint.textContent = 'Detected: Website → will embed in full screen iframe';
+  else
+    hint.textContent = '';
+});
+
+async function apply() {
+  const url = document.getElementById('url').value.trim();
+  if (!url) return;
+  const screenId = document.getElementById('screen').value;
+  const u = url.toLowerCase().split('?')[0];
+  const isImg = /\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u);
+  const type = isImg ? 'gif' : 'iframe';
+  const config = isImg ? { url, objectFit:'cover' } : { url, label:'' };
+  // Replace all widgets on the screen with just this one
+  await clearScreen(screenId);
+  await addWidget(type, config, screenId, isImg ? [0,0,12,8] : [0,0,12,8]);
+  showStatus('Done! Display updated.', true);
+}
+
+async function clearScreen(screenId) {
+  const r = await fetch(`/api/screens/${screenId}`).then(r=>r.json());
+  for (const w of r.widgets||[]) {
+    await fetch(`/api/screens/${screenId}/widgets/${w.id}`, { method:'DELETE' });
+  }
+}
+
+async function addWidget(type, config, screenId, pos) {
+  screenId = screenId || document.getElementById('screen').value;
+  pos = pos || [0,0,6,4];
+  const res = await fetch(`/api/screens/${screenId}/widgets`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ type, x:pos[0], y:pos[1], w:pos[2], h:pos[3], config })
+  });
+  if (res.ok) showStatus(`Added ${type} widget.`, true);
+  else        showStatus('Error adding widget.', false);
+}
+
+function showStatus(msg, ok) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+  el.style.display = 'block';
+  setTimeout(() => el.style.display='none', 3000);
+}
+</script>
+</body>
+</html>

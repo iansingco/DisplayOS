@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DisplayOS</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+#stage { position: relative; width: 100%; height: 100%; }
+
+/* Full-screen layers */
+#bg-iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+#bg-image  { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+
+/* Widget overlay grid */
+#widgets { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(8, 1fr); pointer-events: none; }
+
+/* Overlay HUD */
+#badge {
+  position: fixed; top: .6rem; right: .75rem;
+  display: flex; align-items: center; gap: .4rem;
+  padding: .25rem .6rem; border-radius: 100px;
+  background: rgba(0,0,0,.5); backdrop-filter: blur(8px);
+  font-family: 'Courier New', monospace; font-size: .6rem;
+  color: rgba(255,255,255,.4); pointer-events: none; z-index: 999;
+  transition: opacity .5s;
+}
+#dot { width: 5px; height: 5px; border-radius: 50%; background: #ff7f7f; }
+#dot.on { background: #7fff7f; }
+#empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: rgba(255,255,255,.1); font-family: 'Courier New', monospace; gap: .75rem;
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  <img id="bg-image" />
+  <div id="widgets"></div>
+  <div id="empty">
+    <div style="font-size:2.5rem">◈</div>
+    <div style="font-size:.75rem;letter-spacing:.2em;text-transform:uppercase">No content — open <a href="/" style="color:#7faaff">setup</a></div>
+  </div>
+</div>
+<div id="badge"><span id="dot"></span><span id="label">connecting</span></div>
+
+<script>
+const params   = new URLSearchParams(location.search);
+const screenId = params.get('screen') || 'main';
+const host     = location.hostname;
+const port     = 3333;
+
+document.title = `DisplayOS — ${screenId}`;
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws, reconnect;
+function connect() {
+  ws = new WebSocket(`ws://${host}:${port}?screen=${screenId}`);
+  ws.onopen    = () => setBadge(true);
+  ws.onclose   = () => { setBadge(false); reconnect = setTimeout(connect, 3000); };
+  ws.onerror   = () => ws.close();
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
+}
+
+function handle(msg) {
+  if (msg.type === 'INIT' && msg.screen)         render(msg.screen);
+  if (msg.type === 'SCREEN_UPDATED')             render(msg.screen);
+  if (msg.type === 'WIDGETS_UPDATED' && current) render({ ...current, widgets: msg.widgets });
+  if (msg.type === 'WIDGET_ADDED'    && current) render({ ...current, widgets: [...(current.widgets||[]), msg.widget] });
+  if (msg.type === 'WIDGET_REMOVED'  && current) render({ ...current, widgets: current.widgets.filter(w=>w.id!==msg.widgetId) });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+let current = null;
+const iframeEl  = document.getElementById('bg-iframe');
+const imageEl   = document.getElementById('bg-image');
+const widgetsEl = document.getElementById('widgets');
+const emptyEl   = document.getElementById('empty');
+const stage     = document.getElementById('stage');
+
+function render(screen) {
+  current = screen;
+  stage.style.background = screen.background || '#0a0a0f';
+
+  const widgets = screen.widgets || [];
+  emptyEl.style.display = widgets.length ? 'none' : 'flex';
+
+  // Find the "hero" widget — first iframe or gif fills the background
+  const hero = widgets.find(w => w.type === 'iframe') || widgets.find(w => w.type === 'gif');
+
+  if (hero?.type === 'iframe' && hero.config?.url) {
+    iframeEl.src = hero.config.url;
+    iframeEl.style.display = 'block';
+    imageEl.style.display  = 'none';
+  } else if (hero?.type === 'gif' && hero.config?.url) {
+    imageEl.src = hero.config.url;
+    imageEl.style.display  = 'block';
+    iframeEl.style.display = 'none';
+  } else {
+    iframeEl.style.display = 'none';
+    imageEl.style.display  = 'none';
+  }
+
+  // Overlay widgets (clock, weather, stats) in the grid
+  widgetsEl.innerHTML = '';
+  widgets.filter(w => !['iframe','gif'].includes(w.type)).forEach(w => {
+    const cell = document.createElement('div');
+    cell.style.cssText = `grid-column:${w.x+1}/span ${w.w};grid-row:${w.y+1}/span ${w.h};padding:.5rem;display:flex;align-items:center;justify-content:center`;
+    cell.innerHTML = widgetHTML(w);
+    widgetsEl.appendChild(cell);
+  });
+
+  // Tick clock
+  if (widgets.some(w => w.type === 'clock')) startClock(widgets.find(w=>w.type==='clock'));
+}
+
+// ── Inline widget renderers ───────────────────────────────────────────────
+let clockInterval;
+function startClock(w) {
+  clearInterval(clockInterval);
+  const el = document.getElementById('clock-display');
+  if (!el) return;
+  clockInterval = setInterval(() => {
+    if (document.getElementById('clock-display')) updateClock(w);
+    else clearInterval(clockInterval);
+  }, 1000);
+}
+
+function updateClock(w) {
+  const el = document.getElementById('clock-display'); if (!el) return;
+  const cfg = w.config || {};
+  const now = new Date();
+  const h   = cfg.format24 ? now.getHours() : (now.getHours()%12||12);
+  const m   = String(now.getMinutes()).padStart(2,'0');
+  const s   = String(now.getSeconds()).padStart(2,'0');
+  const ap  = cfg.format24 ? '' : (now.getHours()>=12?' PM':' AM');
+  el.innerHTML = `<span style="font-size:clamp(1.5rem,5vw,4rem);font-weight:200">${String(h).padStart(2,'0')}:${m}${cfg.showSeconds!==false?`<span style="opacity:.4;font-size:.6em">:${s}</span>`:''}${ap}</span>`
+    + (cfg.showDate!==false ? `<div style="font-size:clamp(.5rem,1.2vw,.85rem);opacity:.4;margin-top:.3rem;letter-spacing:.15em;text-transform:uppercase">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>` : '');
+}
+
+function widgetHTML(w) {
+  const base = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Courier New,monospace;color:#e0e0ff;text-align:center;';
+  if (w.type === 'clock') {
+    setTimeout(() => startClock(w), 50);
+    return `<div id="clock-display" style="${base}"></div>`;
+  }
+  if (w.type === 'stats') return statsHTML(w);
+  if (w.type === 'weather') return weatherHTML(w);
+  if (w.type === 'text') return `<div style="${base}font-size:clamp(.8rem,2vw,1.4rem)">${w.config?.body||''}</div>`;
+  return '';
+}
+
+function statsHTML(w) {
+  const refresh = w.config?.refresh || 3000;
+  const id = 'stats-' + w.id;
+  setTimeout(() => loadStats(id, refresh), 50);
+  return `<div id="${id}" style="width:100%;padding:.75rem;font-family:Courier New,monospace;color:#e0e0ff"></div>`;
+}
+const statsTimers = {};
+function loadStats(id, refresh) {
+  clearInterval(statsTimers[id]);
+  const draw = () => fetch('/api/stats').then(r=>r.json()).then(s=>{
+    const el = document.getElementById(id); if (!el) return;
+    const bars = [['CPU',s.cpu,'#7faaff'],['RAM',s.ram,'#7fff7f'],['DISK',s.disk,'#ffaa7f']];
+    el.innerHTML = bars.filter(b=>b[1]!=null).map(([l,v,c])=>`
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+        <span style="width:3rem;font-size:.6rem;opacity:.5">${l}</span>
+        <div style="flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:2px">
+          <div style="height:100%;width:${v}%;background:${c};border-radius:2px;transition:width .5s"></div>
+        </div>
+        <span style="width:2.5rem;font-size:.65rem;text-align:right;color:${c}">${v}%</span>
+      </div>`).join('')
+      + (s.uptime ? `<div style="font-size:.55rem;opacity:.3;text-align:center;margin-top:.25rem">UP ${Math.floor(s.uptime/3600)}h ${Math.floor((s.uptime%3600)/60)}m</div>` : '');
+  }).catch(()=>{});
+  draw();
+  statsTimers[id] = setInterval(draw, refresh);
+}
+
+function weatherHTML(w) {
+  const id = 'wx-' + w.id;
+  const city = w.config?.city || 'New York';
+  const units = w.config?.units || 'fahrenheit';
+  setTimeout(()=>loadWeather(id,city,units),50);
+  return `<div id="${id}" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Courier New,monospace;color:#e0e0ff;gap:.3rem"><span style="opacity:.3;font-size:.7rem">Loading...</span></div>`;
+}
+async function loadWeather(id,city,units) {
+  try {
+    const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`).then(r=>r.json());
+    if (!geo.results?.length) return;
+    const {latitude,longitude,name} = geo.results[0];
+    const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weathercode,windspeed_10m&temperature_unit=${units}&wind_speed_unit=mph&timezone=auto`).then(r=>r.json());
+    const el = document.getElementById(id); if (!el) return;
+    const icons = {0:'☀️',1:'⛅',2:'⛅',3:'☁️'};
+    const icon = icons[w.current.weathercode]||(w.current.weathercode<=49?'🌫️':w.current.weathercode<=69?'🌧️':w.current.weathercode<=79?'🌨️':'⛈️');
+    const unit = units==='fahrenheit'?'°F':'°C';
+    el.innerHTML = `<div style="font-size:clamp(1.5rem,4vw,3rem)">${icon}</div>
+      <div style="font-size:clamp(1.2rem,4vw,3rem);font-weight:200">${Math.round(w.current.temperature_2m)}${unit}</div>
+      <div style="font-size:clamp(.55rem,1.2vw,.8rem);opacity:.45;letter-spacing:.1em">${name}</div>
+      <div style="font-size:clamp(.5rem,1vw,.7rem);opacity:.35">💨 ${Math.round(w.current.windspeed_10m)}mph</div>`;
+  } catch {}
+}
+
+// ── Badge ─────────────────────────────────────────────────────────────────
+function setBadge(on) {
+  document.getElementById('dot').className = on ? 'on' : '';
+  document.getElementById('label').textContent = on ? screenId : 'reconnecting…';
+}
+
+connect();
+</script>
+</body>
+</html>
