@@ -42,6 +42,8 @@ let config = loadConfig();
 const devices = new Map();
 // Sensor readings: screenId → { type → { value, unit, ts } }
 const sensors = new Map();
+// Viewport registry: screenId → { w, h, dpr, clientId, ts }
+const viewports = new Map();
 
 const app = express();
 app.use(cors());
@@ -110,6 +112,9 @@ app.post("/api/devices/:id/cmd", (req, res) => {
   broadcast({ type:"DEVICE_CMD", screenId:req.params.id, ...req.body }, "_bridge");
   res.json({ ok:true });
 });
+
+// Viewport endpoint — shows connected display dimensions
+app.get("/api/viewports", (req, res) => res.json(Object.fromEntries(viewports)));
 
 // Status endpoint — consumed by launcher status page + external monitoring
 app.get("/api/status", async (req, res) => {
@@ -181,6 +186,9 @@ function handleClientMessage(ws, msg, screenId) {
       break;
     case "DEVICE_SENSOR":
       handleDeviceSensor(msg);
+      break;
+    case "VIEWPORT":
+      viewports.set(`${screenId}:${clients.get(ws)?.clientId}`, { screenId, w: msg.w, h: msg.h, dpr: msg.dpr, ts: Date.now() });
       break;
   }
 }

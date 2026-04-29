@@ -36,7 +36,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
 </head>
 <body>
 <div id="stage">
-  <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
   <img id="bg-image" />
   <div id="widgets"></div>
   <div id="empty">
@@ -58,7 +58,7 @@ document.title = `DisplayOS — ${screenId}`;
 let ws, reconnect;
 function connect() {
   ws = new WebSocket(`ws://${host}:${port}?screen=${screenId}`);
-  ws.onopen    = () => setBadge(true);
+  ws.onopen    = () => { setBadge(true); reportViewport(); };
   ws.onclose   = () => { setBadge(false); reconnect = setTimeout(connect, 3000); };
   ws.onerror   = () => ws.close();
   ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
@@ -91,7 +91,7 @@ function render(screen) {
   const hero = widgets.find(w => w.type === 'iframe') || widgets.find(w => w.type === 'gif');
 
   if (hero?.type === 'iframe' && hero.config?.url) {
-    iframeEl.src = hero.config.url;
+    iframeEl.src = normalizeUrl(hero.config.url);
     iframeEl.style.display = 'block';
     imageEl.style.display  = 'none';
   } else if (hero?.type === 'gif' && hero.config?.url) {
@@ -202,11 +202,52 @@ async function loadWeather(id,city,units) {
   } catch {}
 }
 
+// ── URL normalization ─────────────────────────────────────────────────────
+function normalizeUrl(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    // YouTube watch → embed
+    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/watch') {
+      const v = u.searchParams.get('v');
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=0`;
+    }
+    // youtu.be short links
+    if (u.hostname === 'youtu.be') {
+      const v = u.pathname.slice(1);
+      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=0`;
+    }
+    // YouTube playlist
+    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/playlist') {
+      const list = u.searchParams.get('list');
+      if (list) return `https://www.youtube.com/embed/videoseries?list=${list}&autoplay=1`;
+    }
+    // Twitch channel → player embed
+    if (u.hostname === 'www.twitch.tv' || u.hostname === 'twitch.tv') {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length === 1) return `https://player.twitch.tv/?channel=${parts[0]}&parent=${location.hostname}&autoplay=true`;
+      if (parts[0] === 'videos' && parts[1]) return `https://player.twitch.tv/?video=${parts[1]}&parent=${location.hostname}&autoplay=true`;
+    }
+    // Spotify → embed
+    if (u.hostname === 'open.spotify.com') {
+      return url.replace('open.spotify.com/', 'open.spotify.com/embed/');
+    }
+  } catch {}
+  return url;
+}
+
 // ── Badge ─────────────────────────────────────────────────────────────────
 function setBadge(on) {
   document.getElementById('dot').className = on ? 'on' : '';
   document.getElementById('label').textContent = on ? screenId : 'reconnecting…';
 }
+
+function reportViewport() {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'VIEWPORT', screenId, w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 }));
+  }
+}
+window.addEventListener('resize', () => reportViewport());
 
 connect();
 </script>
