@@ -100,7 +100,7 @@ TYPES.forEach(t => {
 
 // Auto-detect type from URL
 document.getElementById('url').addEventListener('input', function() {
-  const u = this.value.toLowerCase().split('?')[0];
+  const u = this.value.toLowerCase().split('?')[0].trim();
   const hint = document.getElementById('detect');
   if (!u) { hint.textContent = ''; return; }
   if (/\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u))
@@ -111,14 +111,21 @@ document.getElementById('url').addEventListener('input', function() {
     hint.textContent = 'Detected: Twitch → will convert to embed player';
   else if (/open\.spotify\.com/.test(u))
     hint.textContent = 'Detected: Spotify → will convert to embed player';
-  else if (u.startsWith('http'))
-    hint.textContent = 'Detected: Website → will embed in full screen iframe';
+  else if (u.startsWith('http') || u.includes('.'))
+    hint.textContent = 'Detected: Website → will embed as iframe (note: many sites block this)';
   else
     hint.textContent = '';
 });
 
+function ensureHttps(url) {
+  url = url.trim();
+  if (!url) return url;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url;
+}
+
 async function apply() {
-  const raw = document.getElementById('url').value.trim();
+  const raw = ensureHttps(document.getElementById('url').value.trim());
   if (!raw) return;
   const url = normalizeUrl(raw);
   const screenId = document.getElementById('screen').value;

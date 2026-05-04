@@ -15,6 +15,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
 /* Widget overlay grid */
 #widgets { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(8, 1fr); pointer-events: none; }
 
+/* Blocked-embed notice */
+#blocked {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: .75rem;
+  color: rgba(255,255,255,.25); font-family: 'Courier New', monospace;
+  background: #0a0a0f;
+}
+#blocked-url { font-size: .65rem; opacity: .4; max-width: 70%; word-break: break-all; text-align: center; }
+
 /* Overlay HUD */
 #badge {
   position: fixed; top: .6rem; right: .75rem;
@@ -36,7 +45,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
 </head>
 <body>
 <div id="stage">
-  <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" onerror="showBlocked()"></iframe>
+  <div id="blocked">
+    <div style="font-size:1.5rem">⊘</div>
+    <div style="font-size:.75rem;letter-spacing:.1em">This site blocks embedding</div>
+    <div id="blocked-url"></div>
+    <div style="font-size:.6rem;opacity:.35">Try an image URL, a GIF, or YouTube instead</div>
+  </div>
   <img id="bg-image" />
   <div id="widgets"></div>
   <div id="empty">
@@ -78,7 +93,14 @@ const iframeEl  = document.getElementById('bg-iframe');
 const imageEl   = document.getElementById('bg-image');
 const widgetsEl = document.getElementById('widgets');
 const emptyEl   = document.getElementById('empty');
+const blockedEl = document.getElementById('blocked');
 const stage     = document.getElementById('stage');
+
+function showBlocked(url) {
+  blockedEl.style.display = 'flex';
+  document.getElementById('blocked-url').textContent = url || iframeEl.src;
+}
+function hideBlocked() { blockedEl.style.display = 'none'; }
 
 function render(screen) {
   current = screen;
@@ -90,17 +112,36 @@ function render(screen) {
   // Find the "hero" widget — first iframe or gif fills the background
   const hero = widgets.find(w => w.type === 'iframe') || widgets.find(w => w.type === 'gif');
 
+  hideBlocked();
   if (hero?.type === 'iframe' && hero.config?.url) {
-    iframeEl.src = normalizeUrl(hero.config.url);
+    const embedUrl = normalizeUrl(hero.config.url);
+    iframeEl.src = embedUrl;
     iframeEl.style.display = 'block';
     imageEl.style.display  = 'none';
+    // Detect if the iframe failed to load (X-Frame-Options block)
+    iframeEl.onload = () => {
+      try { const _ = iframeEl.contentWindow.location.href; hideBlocked(); }
+      catch { /* cross-origin load — normal, means it loaded OK */ hideBlocked(); }
+    };
+    // Timeout fallback: if iframe stays empty after 8s, likely blocked
+    clearTimeout(iframeEl._blockTimer);
+    iframeEl._blockTimer = setTimeout(() => {
+      try {
+        // If contentDocument is null the load was blocked entirely
+        if (!iframeEl.contentDocument && iframeEl.style.display !== 'none') showBlocked(embedUrl);
+      } catch {}
+    }, 8000);
   } else if (hero?.type === 'gif' && hero.config?.url) {
     imageEl.src = hero.config.url;
     imageEl.style.display  = 'block';
     iframeEl.style.display = 'none';
+    iframeEl.onload = null;
+    clearTimeout(iframeEl._blockTimer);
   } else {
     iframeEl.style.display = 'none';
     imageEl.style.display  = 'none';
+    iframeEl.onload = null;
+    clearTimeout(iframeEl._blockTimer);
   }
 
   // Overlay widgets (clock, weather, stats) in the grid
