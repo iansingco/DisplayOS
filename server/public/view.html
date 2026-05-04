@@ -248,20 +248,10 @@ function normalizeUrl(url) {
   if (!url) return url;
   try {
     const u = new URL(url);
-    // YouTube watch → embed
-    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/watch') {
-      const v = u.searchParams.get('v');
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
-    }
-    // youtu.be short links
-    if (u.hostname === 'youtu.be') {
-      const v = u.pathname.slice(1);
-      if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&mute=1`;
-    }
-    // YouTube playlist
-    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/playlist') {
-      const list = u.searchParams.get('list');
-      if (list) return `https://www.youtube.com/embed/videoseries?list=${list}&autoplay=1`;
+    const isYT = u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com' || u.hostname === 'youtu.be';
+    // YouTube → pie.yt proxy (bypasses X-Frame-Options from localhost)
+    if (isYT && !url.includes('pie.yt')) {
+      return `https://pie.yt/?v=${encodeURIComponent(url)}&pieshare=1`;
     }
     // Twitch channel → player embed
     if (u.hostname === 'www.twitch.tv' || u.hostname === 'twitch.tv') {
