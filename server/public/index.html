@@ -32,12 +32,16 @@ button:hover { background: rgba(127,255,127,.18); }
   <select id="screen"><option value="main">main</option></select>
 
   <button onclick="apply()">Show on Display</button>
-  <a href="/view?screen=main" target="_blank"><button class="btn-sec" type="button">↗ Open Display</button></a>
+  <button class="btn-sec" type="button" onclick="openDisplay()">↗ Open Display</button>
 
   <hr class="divider">
 
   <label>Or add individual widgets</label>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="palette"></div>
+
+  <hr class="divider">
+
+  <a href="http://localhost:5174" target="_blank"><button class="btn-sec" type="button" style="opacity:.6">⚙ Admin Panel (localhost:5174)</button></a>
 
   <div class="status" id="status"></div>
 </div>
@@ -155,6 +159,11 @@ async function addWidget(type, config, screenId, pos) {
   });
   if (res.ok) showStatus(`Added ${type} widget.`, true);
   else        showStatus('Error adding widget.', false);
+}
+
+function openDisplay() {
+  const screenId = document.getElementById('screen').value;
+  window.open(`/view?screen=${encodeURIComponent(screenId)}`, '_blank');
 }
 
 function showStatus(msg, ok) {
