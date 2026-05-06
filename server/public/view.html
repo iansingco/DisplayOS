@@ -11,6 +11,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
 /* Full-screen layers */
 #bg-iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
 #bg-image  { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+#bg-video  { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
 
 /* Widget overlay grid */
 #widgets { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(8, 1fr); pointer-events: none; }
@@ -45,6 +46,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
 </head>
 <body>
 <div id="stage">
+  <video id="bg-video" autoplay loop muted playsinline></video>
   <iframe id="bg-iframe" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen onerror="showBlocked()"></iframe>
   <div id="blocked">
     <div style="font-size:1.5rem">⊘</div>
@@ -91,6 +93,7 @@ function handle(msg) {
 let current = null;
 const iframeEl  = document.getElementById('bg-iframe');
 const imageEl   = document.getElementById('bg-image');
+const videoEl   = document.getElementById('bg-video');
 const widgetsEl = document.getElementById('widgets');
 const emptyEl   = document.getElementById('empty');
 const blockedEl = document.getElementById('blocked');
@@ -109,8 +112,8 @@ function render(screen) {
   const widgets = screen.widgets || [];
   emptyEl.style.display = widgets.length ? 'none' : 'flex';
 
-  // Find the "hero" widget — first iframe or gif fills the background
-  const hero = widgets.find(w => w.type === 'iframe') || widgets.find(w => w.type === 'gif');
+  // Find the "hero" widget — video > iframe > gif fills the background
+  const hero = widgets.find(w => w.type === 'video') || widgets.find(w => w.type === 'iframe') || widgets.find(w => w.type === 'gif');
 
   hideBlocked();
   if (hero?.type === 'iframe' && hero.config?.url) {
@@ -135,18 +138,27 @@ function render(screen) {
     imageEl.src = hero.config.url;
     imageEl.style.display  = 'block';
     iframeEl.style.display = 'none';
+    videoEl.style.display  = 'none';
+    iframeEl.onload = null;
+    clearTimeout(iframeEl._blockTimer);
+  } else if (hero?.type === 'video' && hero.config?.url) {
+    if (videoEl.src !== hero.config.url) { videoEl.src = hero.config.url; videoEl.load(); }
+    videoEl.style.display  = 'block';
+    iframeEl.style.display = 'none';
+    imageEl.style.display  = 'none';
     iframeEl.onload = null;
     clearTimeout(iframeEl._blockTimer);
   } else {
     iframeEl.style.display = 'none';
     imageEl.style.display  = 'none';
+    videoEl.style.display  = 'none';
     iframeEl.onload = null;
     clearTimeout(iframeEl._blockTimer);
   }
 
   // Overlay widgets (clock, weather, stats) in the grid
   widgetsEl.innerHTML = '';
-  widgets.filter(w => !['iframe','gif'].includes(w.type)).forEach(w => {
+  widgets.filter(w => !['iframe','gif','video'].includes(w.type)).forEach(w => {
     const cell = document.createElement('div');
     cell.style.cssText = `grid-column:${w.x+1}/span ${w.w};grid-row:${w.y+1}/span ${w.h};padding:.5rem;display:flex;align-items:center;justify-content:center`;
     cell.innerHTML = widgetHTML(w);

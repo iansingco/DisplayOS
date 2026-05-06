@@ -36,6 +36,15 @@ button:hover { background: rgba(127,255,127,.18); }
 
   <hr class="divider">
 
+  <label>Upload a video or image from your PC</label>
+  <div id="dropzone" style="border:1px dashed rgba(255,255,255,.15);border-radius:6px;padding:1.5rem;text-align:center;cursor:pointer;font-size:.75rem;opacity:.5;margin-bottom:.5rem;transition:opacity .2s" onclick="document.getElementById('fileinput').click()" ondragover="event.preventDefault();this.style.opacity=1" ondragleave="this.style.opacity=.5" ondrop="handleDrop(event)">
+    Drop video / image here, or click to browse
+  </div>
+  <input id="fileinput" type="file" accept="video/*,image/*,.gif" style="display:none" onchange="uploadFile(this.files[0])">
+  <div id="media-list" style="display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem"></div>
+
+  <hr class="divider">
+
   <label>Or add individual widgets</label>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="palette"></div>
 
@@ -72,6 +81,67 @@ const TYPES = [
   { type:'weather', label:'⛅ Weather', config:{ city:'New York' } },
   { type:'stats',   label:'📊 Stats',   config:{} },
 ];
+
+// ── Media library ─────────────────────────────────────────────────────────────
+function loadMedia() {
+  fetch('/api/media').then(r=>r.json()).then(files => {
+    const el = document.getElementById('media-list');
+    if (!files.length) { el.innerHTML = '<div style="font-size:.65rem;opacity:.3;text-align:center">No uploads yet</div>'; return; }
+    el.innerHTML = files.map(f => {
+      const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(f.name);
+      const icon = isVideo ? '▶' : '◼';
+      return `<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;background:rgba(255,255,255,.03);border-radius:4px;font-size:.7rem">
+        <span style="opacity:.4">${icon}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
+        <button onclick="useMedia('${f.url}','${f.name}')" style="width:auto;padding:.2rem .5rem;font-size:.65rem;background:rgba(127,255,127,.1);border:1px solid rgba(127,255,127,.2);color:#7fff7f;border-radius:4px;cursor:pointer;margin:0">Use</button>
+        <button onclick="deleteMedia('${f.name}')" style="width:auto;padding:.2rem .5rem;font-size:.65rem;background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.15);color:#ff9f9f;border-radius:4px;cursor:pointer;margin:0">✕</button>
+      </div>`;
+    }).join('');
+  });
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  const dz = document.getElementById('dropzone');
+  dz.textContent = `Uploading ${file.name}…`;
+  dz.style.opacity = 1;
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch('/api/upload', { method:'POST', body: fd });
+  if (res.ok) {
+    const data = await res.json();
+    dz.textContent = 'Drop video / image here, or click to browse';
+    dz.style.opacity = .5;
+    loadMedia();
+    showStatus(`Uploaded: ${data.name}`, true);
+  } else {
+    dz.textContent = 'Upload failed — try again';
+    showStatus('Upload failed', false);
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').style.opacity = .5;
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+}
+
+async function useMedia(url, name) {
+  const screenId = document.getElementById('screen').value;
+  const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(name);
+  const type = isVideo ? 'video' : 'gif';
+  await clearScreen(screenId);
+  await addWidget(type, { url }, screenId, [0,0,12,8]);
+  showStatus(`Now showing: ${name}`, true);
+}
+
+async function deleteMedia(name) {
+  await fetch(`/api/media/${encodeURIComponent(name)}`, { method:'DELETE' });
+  loadMedia();
+}
+
+loadMedia();
 
 // Populate screen selector
 fetch('/api/screens').then(r=>r.json()).then(screens => {

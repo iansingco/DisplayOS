@@ -3,13 +3,24 @@ import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import cors from "cors";
 import { v4 as uuidv4 } from "uuid";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, renameSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getStats } from "./stats.js";
+import multer from "multer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "config.json");
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+
+const upload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+  fileFilter: (req, file, cb) => {
+    const ok = /^(video|image|audio)\//i.test(file.mimetype) || /\.(mp4|webm|mov|mkv|gif|png|jpg|jpeg|webp|mp3|wav)$/i.test(file.originalname);
+    cb(null, ok);
+  }
+});
 
 function loadConfig() {
   if (!existsSync(CONFIG_PATH)) {
@@ -56,6 +67,9 @@ app.use("/admin",   express.static(path.join(__dirname, "../admin/dist")));
 // Fallback routes so /view and / always work even without React builds
 app.get("/view", (req, res) => res.sendFile(path.join(__dirname, "public/view.html")));
 app.get("/",     (req, res) => res.sendFile(path.join(__dirname, "public/index.html")));
+
+// Serve uploaded files
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 app.get("/api/screens",      (req, res) => res.json(config.screens));
@@ -115,6 +129,31 @@ app.post("/api/devices/:id/cmd", (req, res) => {
 
 // Viewport endpoint — shows connected display dimensions
 app.get("/api/viewports", (req, res) => res.json(Object.fromEntries(viewports)));
+
+// ── Media / uploads ───────────────────────────────────────────────────────────
+app.post("/api/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file" });
+  const ext  = path.extname(req.file.originalname).toLowerCase();
+  const name = req.file.filename + ext;
+  const dest = path.join(UPLOADS_DIR, name);
+  try { renameSync(req.file.path, dest); } catch { /* already at dest */ }
+  res.json({ url: `/uploads/${name}`, name: req.file.originalname, size: req.file.size, mime: req.file.mimetype });
+});
+
+app.get("/api/media", (req, res) => {
+  try {
+    const files = readdirSync(UPLOADS_DIR)
+      .filter(f => /\.(mp4|webm|mov|mkv|gif|png|jpg|jpeg|webp|mp3|wav)$/i.test(f))
+      .map(f => ({ name: f, url: `/uploads/${f}` }));
+    res.json(files);
+  } catch { res.json([]); }
+});
+
+app.delete("/api/media/:name", (req, res) => {
+  const safe = path.basename(req.params.name);
+  try { unlinkSync(path.join(UPLOADS_DIR, safe)); res.json({ ok: true }); }
+  catch { res.status(404).json({ error: "Not found" }); }
+});
 
 // Status endpoint — consumed by launcher status page + external monitoring
 app.get("/api/status", async (req, res) => {
