@@ -2,64 +2,130 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>DisplayOS Setup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DisplayOS</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DisplayOS">
+<link rel="apple-touch-icon" href="/icon.svg">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0a0f; color: #c8c8e8; font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
-.wrap { width: 100%; max-width: 520px; }
-h1 { font-size: 1rem; letter-spacing: .2em; color: #7faaff; margin-bottom: 2rem; font-weight: normal; }
+body {
+  background: #0a0a0f; color: #c8c8e8;
+  font-family: 'Courier New', monospace;
+  min-height: 100vh; min-height: 100dvh;
+  padding: env(safe-area-inset-top, 1.5rem) env(safe-area-inset-right, 1.5rem) env(safe-area-inset-bottom, 1.5rem) env(safe-area-inset-left, 1.5rem);
+}
+.wrap { width: 100%; max-width: 520px; margin: 0 auto; padding: 1.5rem 0; }
+h1 { font-size: 1rem; letter-spacing: .2em; color: #7faaff; margin-bottom: 1.5rem; font-weight: normal; }
 label { font-size: .7rem; opacity: .5; letter-spacing: .15em; display: block; margin-bottom: .4rem; text-transform: uppercase; }
-input, select { width: 100%; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #e0e0ff; padding: .6rem .8rem; font-size: .9rem; font-family: inherit; outline: none; margin-bottom: 1.25rem; }
-button { width: 100%; padding: .65rem; background: rgba(127,255,127,.1); border: 1px solid rgba(127,255,127,.3); border-radius: 6px; color: #7fff7f; cursor: pointer; font-family: inherit; font-size: .9rem; margin-bottom: .75rem; }
-button:hover { background: rgba(127,255,127,.18); }
+input, select {
+  width: 100%; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px; color: #e0e0ff; padding: .75rem .9rem; font-size: 1rem;
+  font-family: inherit; outline: none; margin-bottom: 1.25rem;
+  -webkit-appearance: none; appearance: none;
+}
+button {
+  width: 100%; padding: .85rem; background: rgba(127,255,127,.1);
+  border: 1px solid rgba(127,255,127,.3); border-radius: 8px; color: #7fff7f;
+  cursor: pointer; font-family: inherit; font-size: 1rem; margin-bottom: .75rem;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  min-height: 48px;
+}
+button:active { opacity: .7; }
 .btn-sec { background: rgba(127,170,255,.08); border-color: rgba(127,170,255,.2); color: #7faaff; }
+.btn-dim { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); color: #c8c8e8; }
 .hint { font-size: .7rem; opacity: .4; margin-top: -.9rem; margin-bottom: 1.25rem; }
-.status { font-size: .75rem; padding: .5rem .75rem; border-radius: 6px; margin-top: 1rem; display: none; }
+.status { font-size: .75rem; padding: .6rem .9rem; border-radius: 8px; margin-top: 1rem; display: none; }
 .ok  { background: rgba(127,255,127,.08); border: 1px solid rgba(127,255,127,.2); color: #7fff7f; }
 .err { background: rgba(255,100,100,.08); border: 1px solid rgba(255,100,100,.2); color: #ff9f9f; }
 .divider { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 1.5rem 0; }
+.row { display: flex; gap: .5rem; }
+.row button, .row input { margin-bottom: 0; flex: 1; }
+.row button { flex: 0 0 auto; width: auto; padding: .75rem 1rem; }
+
+/* Quick actions — prominent on mobile */
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: 1.25rem; }
+.quick button { margin-bottom: 0; font-size: .85rem; padding: .9rem .5rem; }
+
+/* Section toggle for less-used options */
+details summary {
+  font-size: .7rem; opacity: .4; letter-spacing: .15em; text-transform: uppercase;
+  cursor: pointer; list-style: none; margin-bottom: .75rem; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+details summary::before { content: '▶  '; font-size: .6rem; }
+details[open] summary::before { content: '▼  '; }
+details summary::-webkit-details-marker { display: none; }
+
+@media (min-width: 540px) {
+  body { display: flex; align-items: center; justify-content: center; padding: 2rem; }
+  .wrap { padding: 0; }
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>◈ DisplayOS — Quick Setup</h1>
-
-  <label>Paste a URL to display</label>
-  <input id="url" type="text" placeholder="https://... (image, GIF, or website)" autofocus />
-  <div class="hint" id="detect"></div>
+  <h1>◈ DisplayOS</h1>
 
   <label>Screen</label>
   <select id="screen"><option value="main">main</option></select>
 
+  <!-- Quick actions — most-used on mobile -->
+  <div class="quick" id="quick-actions">
+    <button class="btn-sec" onclick="openDisplay()">↗ Open Display</button>
+    <button class="btn-dim" onclick="quickClear()">✕ Clear Screen</button>
+    <button class="btn-dim" onclick="quickWidget('clock',{})">🕐 Clock</button>
+    <button class="btn-dim" onclick="quickWidget('weather',{city:'New York'})">⛅ Weather</button>
+  </div>
+
+  <label>Paste a URL to display</label>
+  <input id="url" type="url" placeholder="youtube.com/... or image URL or website" autocomplete="off" />
+  <div class="hint" id="detect"></div>
   <button onclick="apply()">Show on Display</button>
-  <button class="btn-sec" type="button" onclick="openDisplay()">↗ Open Display</button>
 
   <hr class="divider">
 
-  <label>Media folder (point to any folder on this PC)</label>
-  <div style="display:flex;gap:.5rem;margin-bottom:.4rem">
-    <input id="mediadir" type="text" placeholder="C:\Videos  or  /home/user/videos" style="margin-bottom:0;flex:1" />
-    <button onclick="setMediaDir()" style="width:auto;padding:.6rem .9rem;margin-bottom:0">Set</button>
-    <button onclick="setMediaDir('')" class="btn-sec" style="width:auto;padding:.6rem .9rem;margin-bottom:0">Clear</button>
-  </div>
-  <div class="hint" style="margin-bottom:1rem">Files in this folder appear instantly — no upload needed. Great for large videos.</div>
+  <!-- Media library -->
+  <label>Media library</label>
+  <div id="media-list" style="display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem"></div>
 
-  <label>Or upload a file (small files / remote use)</label>
-  <div id="dropzone" style="border:1px dashed rgba(255,255,255,.15);border-radius:6px;padding:1.25rem;text-align:center;cursor:pointer;font-size:.75rem;opacity:.5;margin-bottom:.5rem;transition:opacity .2s" onclick="document.getElementById('fileinput').click()" ondragover="event.preventDefault();this.style.opacity=1" ondragleave="this.style.opacity=.5" ondrop="handleDrop(event)">
-    Drop file here, or click to browse — no size limit
+  <div id="dropzone"
+    style="border:1px dashed rgba(255,255,255,.12);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;font-size:.75rem;opacity:.45;margin-bottom:.5rem;transition:opacity .2s;min-height:48px;display:flex;align-items:center;justify-content:center"
+    onclick="document.getElementById('fileinput').click()"
+    ondragover="event.preventDefault();this.style.opacity=1"
+    ondragleave="this.style.opacity=.45"
+    ondrop="handleDrop(event)">
+    + Upload file (no size limit)
   </div>
   <input id="fileinput" type="file" accept="video/*,image/*,.gif" style="display:none" onchange="uploadFile(this.files[0])">
 
-  <div id="media-list" style="display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem"></div>
-
   <hr class="divider">
 
-  <label>Or add individual widgets</label>
-  <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="palette"></div>
+  <!-- Less-used settings collapsed on mobile -->
+  <details>
+    <summary>Media folder &amp; advanced</summary>
 
-  <hr class="divider">
+    <label style="margin-top:.5rem">Media folder path (instant, no upload)</label>
+    <div class="row" style="margin-bottom:.4rem">
+      <input id="mediadir" type="text" placeholder="C:\Videos  or  /home/user/videos" />
+      <button onclick="setMediaDir()">Set</button>
+      <button onclick="setMediaDir('')" class="btn-sec">Clear</button>
+    </div>
+    <div class="hint" style="margin-bottom:1.25rem">Files in this folder appear above instantly — great for large videos.</div>
 
-  <a href="http://localhost:5174" target="_blank"><button class="btn-sec" type="button" style="opacity:.6">⚙ Admin Panel (localhost:5174)</button></a>
+    <label>Add individual widget</label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="palette"></div>
+
+    <div style="margin-top:1rem">
+      <a href="http://localhost:5174" target="_blank">
+        <button class="btn-sec" type="button" style="opacity:.55;font-size:.8rem">⚙ Admin Panel (localhost:5174)</button>
+      </a>
+    </div>
+  </details>
 
   <div class="status" id="status"></div>
 </div>
@@ -85,31 +151,89 @@ function normalizeUrl(url) {
   return url;
 }
 
-const TYPES = [
-  { type:'clock',   label:'🕐 Clock',   config:{} },
-  { type:'weather', label:'⛅ Weather', config:{ city:'New York' } },
-  { type:'stats',   label:'📊 Stats',   config:{} },
-];
+function ensureHttps(url) {
+  url = url.trim();
+  if (!url) return url;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url;
+}
+
+// ── Screen selector ───────────────────────────────────────────────────────────
+fetch('/api/screens').then(r=>r.json()).then(screens => {
+  const sel = document.getElementById('screen');
+  sel.innerHTML = '';
+  Object.values(screens).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = `${s.name} (${s.id})`;
+    sel.appendChild(o);
+  });
+});
+
+// ── Quick actions ─────────────────────────────────────────────────────────────
+function openDisplay() {
+  window.open(`/view?screen=${encodeURIComponent(document.getElementById('screen').value)}`, '_blank');
+}
+async function quickClear() {
+  await clearScreen(document.getElementById('screen').value);
+  showStatus('Screen cleared', true);
+}
+async function quickWidget(type, config) {
+  await addWidget(type, config);
+  showStatus(`Added ${type}`, true);
+}
+
+// ── URL input ─────────────────────────────────────────────────────────────────
+document.getElementById('url').addEventListener('input', function() {
+  const u = this.value.toLowerCase().split('?')[0].trim();
+  const hint = document.getElementById('detect');
+  if (!u) { hint.textContent = ''; return; }
+  if (/\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u))
+    hint.textContent = 'Image / GIF → full screen';
+  else if (/youtube\.com|youtu\.be/.test(u))
+    hint.textContent = 'YouTube → proxied via pie.yt';
+  else if (/twitch\.tv/.test(u))
+    hint.textContent = 'Twitch → embed player';
+  else if (/open\.spotify\.com/.test(u))
+    hint.textContent = 'Spotify → embed player';
+  else if (u.startsWith('http') || u.includes('.'))
+    hint.textContent = 'Website → iframe (many sites block this)';
+  else
+    hint.textContent = '';
+});
+
+async function apply() {
+  const raw = ensureHttps(document.getElementById('url').value.trim());
+  if (!raw) return;
+  const url = normalizeUrl(raw);
+  const screenId = document.getElementById('screen').value;
+  const u = raw.toLowerCase().split('?')[0];
+  const isImg = /\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u);
+  const type = isImg ? 'gif' : 'iframe';
+  const cfg = isImg ? { url, objectFit:'cover' } : { url, label:'' };
+  await clearScreen(screenId);
+  await addWidget(type, cfg, screenId, [0,0,12,8]);
+  document.getElementById('url').value = '';
+  document.getElementById('detect').textContent = '';
+  showStatus('Display updated', true);
+}
 
 // ── Media library ─────────────────────────────────────────────────────────────
 function loadMedia() {
   fetch('/api/media').then(r=>r.json()).then(files => {
     const el = document.getElementById('media-list');
-    if (!files.length) { el.innerHTML = '<div style="font-size:.65rem;opacity:.3;text-align:center">No media yet</div>'; return; }
+    if (!files.length) { el.innerHTML = ''; return; }
     el.innerHTML = files.map(f => {
       const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(f.name);
       const icon = isVideo ? '▶' : '◼';
-      const badge = f.source === 'folder'
-        ? `<span style="font-size:.55rem;opacity:.4;padding:.1rem .3rem;border:1px solid rgba(255,255,255,.1);border-radius:3px">folder</span>`
-        : `<span style="font-size:.55rem;opacity:.4;padding:.1rem .3rem;border:1px solid rgba(255,255,255,.1);border-radius:3px">upload</span>`;
+      const badge = `<span style="font-size:.55rem;opacity:.35;padding:.1rem .3rem;border:1px solid rgba(255,255,255,.1);border-radius:3px">${f.source}</span>`;
       const delBtn = f.source === 'upload'
-        ? `<button onclick="deleteMedia('${f.name}')" style="width:auto;padding:.2rem .5rem;font-size:.65rem;background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.15);color:#ff9f9f;border-radius:4px;cursor:pointer;margin:0">✕</button>`
+        ? `<button onclick="deleteMedia('${f.name}')" style="width:auto;padding:.3rem .6rem;font-size:.65rem;background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.15);color:#ff9f9f;border-radius:6px;cursor:pointer;margin:0;min-height:0">✕</button>`
         : '';
-      return `<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;background:rgba(255,255,255,.03);border-radius:4px;font-size:.7rem">
-        <span style="opacity:.4">${icon}</span>
+      return `<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:rgba(255,255,255,.03);border-radius:6px;font-size:.7rem">
+        <span style="opacity:.35">${icon}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
         ${badge}
-        <button onclick="useMedia('${f.url}','${f.name}')" style="width:auto;padding:.2rem .5rem;font-size:.65rem;background:rgba(127,255,127,.1);border:1px solid rgba(127,255,127,.2);color:#7fff7f;border-radius:4px;cursor:pointer;margin:0">Use</button>
+        <button onclick="useMedia('${f.url}','${f.name}')" style="width:auto;padding:.3rem .6rem;font-size:.65rem;background:rgba(127,255,127,.1);border:1px solid rgba(127,255,127,.2);color:#7fff7f;border-radius:6px;cursor:pointer;margin:0;min-height:0">Use</button>
         ${delBtn}
       </div>`;
     }).join('');
@@ -119,12 +243,10 @@ function loadMedia() {
 async function setMediaDir(dir) {
   const val = dir !== undefined ? dir : document.getElementById('mediadir').value.trim();
   await fetch('/api/config/mediadir', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dir: val }) });
-  if (val) showStatus(`Media folder set: ${val}`, true);
-  else showStatus('Media folder cleared', true);
+  showStatus(val ? `Folder set` : 'Folder cleared', true);
   loadMedia();
 }
 
-// Load current mediadir setting
 fetch('/api/config').then(r=>r.json()).then(cfg => {
   if (cfg.server?.mediaDir) document.getElementById('mediadir').value = cfg.server.mediaDir;
 });
@@ -137,21 +259,15 @@ async function uploadFile(file) {
   const fd = new FormData();
   fd.append('file', file);
   const res = await fetch('/api/upload', { method:'POST', body: fd });
-  if (res.ok) {
-    const data = await res.json();
-    dz.textContent = 'Drop video / image here, or click to browse';
-    dz.style.opacity = .5;
-    loadMedia();
-    showStatus(`Uploaded: ${data.name}`, true);
-  } else {
-    dz.textContent = 'Upload failed — try again';
-    showStatus('Upload failed', false);
-  }
+  dz.textContent = '+ Upload file (no size limit)';
+  dz.style.opacity = .45;
+  if (res.ok) { loadMedia(); showStatus(`Uploaded`, true); }
+  else showStatus('Upload failed', false);
 }
 
 function handleDrop(e) {
   e.preventDefault();
-  document.getElementById('dropzone').style.opacity = .5;
+  document.getElementById('dropzone').style.opacity = .45;
   const file = e.dataTransfer.files[0];
   if (file) uploadFile(file);
 }
@@ -159,9 +275,8 @@ function handleDrop(e) {
 async function useMedia(url, name) {
   const screenId = document.getElementById('screen').value;
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(name);
-  const type = isVideo ? 'video' : 'gif';
   await clearScreen(screenId);
-  await addWidget(type, { url }, screenId, [0,0,12,8]);
+  await addWidget(isVideo ? 'video' : 'gif', { url }, screenId, [0,0,12,8]);
   showStatus(`Now showing: ${name}`, true);
 }
 
@@ -172,67 +287,23 @@ async function deleteMedia(name) {
 
 loadMedia();
 
-// Populate screen selector
-fetch('/api/screens').then(r=>r.json()).then(screens => {
-  const sel = document.getElementById('screen');
-  sel.innerHTML = '';
-  Object.values(screens).forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = `${s.name} (/${s.id})`;
-    sel.appendChild(o);
-  });
-});
-
-// Widget palette
+// ── Widget palette ────────────────────────────────────────────────────────────
+const TYPES = [
+  { type:'clock',   label:'🕐 Clock',   config:{} },
+  { type:'weather', label:'⛅ Weather', config:{ city:'New York' } },
+  { type:'stats',   label:'📊 Stats',   config:{} },
+];
 const pal = document.getElementById('palette');
 TYPES.forEach(t => {
   const b = document.createElement('button');
   b.textContent = t.label;
-  b.style.cssText = 'width:auto;padding:.4rem .75rem;font-size:.75rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#c8c8e8;margin-bottom:.5rem';
+  b.className = 'btn-dim';
+  b.style.cssText = 'width:auto;padding:.4rem .75rem;font-size:.75rem;margin-bottom:.5rem';
   b.onclick = () => addWidget(t.type, t.config);
   pal.appendChild(b);
 });
 
-// Auto-detect type from URL
-document.getElementById('url').addEventListener('input', function() {
-  const u = this.value.toLowerCase().split('?')[0].trim();
-  const hint = document.getElementById('detect');
-  if (!u) { hint.textContent = ''; return; }
-  if (/\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u))
-    hint.textContent = 'Detected: Image / GIF → will display full screen';
-  else if (/youtube\.com|youtu\.be/.test(u))
-    hint.textContent = 'Detected: YouTube → will proxy via pie.yt (no ads, embeddable)';
-  else if (/twitch\.tv/.test(u))
-    hint.textContent = 'Detected: Twitch → will convert to embed player';
-  else if (/open\.spotify\.com/.test(u))
-    hint.textContent = 'Detected: Spotify → will convert to embed player';
-  else if (u.startsWith('http') || u.includes('.'))
-    hint.textContent = 'Detected: Website → will embed as iframe (note: many sites block this)';
-  else
-    hint.textContent = '';
-});
-
-function ensureHttps(url) {
-  url = url.trim();
-  if (!url) return url;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  return url;
-}
-
-async function apply() {
-  const raw = ensureHttps(document.getElementById('url').value.trim());
-  if (!raw) return;
-  const url = normalizeUrl(raw);
-  const screenId = document.getElementById('screen').value;
-  const u = raw.toLowerCase().split('?')[0];
-  const isImg = /\.(gif|png|jpg|jpeg|webp|svg)$/.test(u) || /giphy|tenor|gfycat/.test(u);
-  const type = isImg ? 'gif' : 'iframe';
-  const config = isImg ? { url, objectFit:'cover' } : { url, label:'' };
-  await clearScreen(screenId);
-  await addWidget(type, config, screenId, [0,0,12,8]);
-  showStatus('Done! Display updated.', true);
-}
-
+// ── API helpers ───────────────────────────────────────────────────────────────
 async function clearScreen(screenId) {
   const r = await fetch(`/api/screens/${screenId}`).then(r=>r.json());
   for (const w of r.widgets||[]) {
@@ -248,13 +319,7 @@ async function addWidget(type, config, screenId, pos) {
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ type, x:pos[0], y:pos[1], w:pos[2], h:pos[3], config })
   });
-  if (res.ok) showStatus(`Added ${type} widget.`, true);
-  else        showStatus('Error adding widget.', false);
-}
-
-function openDisplay() {
-  const screenId = document.getElementById('screen').value;
-  window.open(`/view?screen=${encodeURIComponent(screenId)}`, '_blank');
+  if (!res.ok) showStatus('Error adding widget', false);
 }
 
 function showStatus(msg, ok) {
