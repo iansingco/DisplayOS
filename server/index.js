@@ -9,17 +9,18 @@ import { fileURLToPath } from "url";
 import { getStats } from "./stats.js";
 import multer from "multer";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "config.json");
 const UPLOADS_DIR = path.join(__dirname, "uploads");
+const MEDIA_EXT   = /\.(mp4|webm|mov|mkv|gif|png|jpg|jpeg|webp|mp3|wav)$/i;
 
 const upload = multer({
   dest: UPLOADS_DIR,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
   fileFilter: (req, file, cb) => {
-    const ok = /^(video|image|audio)\//i.test(file.mimetype) || /\.(mp4|webm|mov|mkv|gif|png|jpg|jpeg|webp|mp3|wav)$/i.test(file.originalname);
+    const ok = /^(video|image|audio)\//i.test(file.mimetype) || MEDIA_EXT.test(file.originalname);
     cb(null, ok);
   }
+  // No fileSize limit — uploading to localhost, only disk space matters
 });
 
 function loadConfig() {
@@ -37,7 +38,7 @@ function loadConfig() {
           ]
         }
       },
-      server: { port: 3333 }
+      server: { port: 3333, mediaDir: "" }
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(defaults, null, 2));
     return defaults;
@@ -70,6 +71,13 @@ app.get("/",     (req, res) => res.sendFile(path.join(__dirname, "public/index.h
 
 // Serve uploaded files
 app.use("/uploads", express.static(UPLOADS_DIR));
+
+// Serve configured media folder (any directory on the host PC)
+app.use("/media", (req, res, next) => {
+  const dir = config.server?.mediaDir;
+  if (dir && existsSync(dir)) express.static(dir)(req, res, next);
+  else res.status(404).end();
+});
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 app.get("/api/screens",      (req, res) => res.json(config.screens));
@@ -136,23 +144,42 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
   const ext  = path.extname(req.file.originalname).toLowerCase();
   const name = req.file.filename + ext;
   const dest = path.join(UPLOADS_DIR, name);
-  try { renameSync(req.file.path, dest); } catch { /* already at dest */ }
+  try { renameSync(req.file.path, dest); } catch {}
   res.json({ url: `/uploads/${name}`, name: req.file.originalname, size: req.file.size, mime: req.file.mimetype });
 });
 
 app.get("/api/media", (req, res) => {
+  const files = [];
+  // Uploaded files (server/uploads/)
   try {
-    const files = readdirSync(UPLOADS_DIR)
-      .filter(f => /\.(mp4|webm|mov|mkv|gif|png|jpg|jpeg|webp|mp3|wav)$/i.test(f))
-      .map(f => ({ name: f, url: `/uploads/${f}` }));
-    res.json(files);
-  } catch { res.json([]); }
+    readdirSync(UPLOADS_DIR).filter(f => MEDIA_EXT.test(f))
+      .forEach(f => files.push({ name: f, url: `/uploads/${f}`, source: "upload" }));
+  } catch {}
+  // Configured media folder (any path on host PC)
+  const dir = config.server?.mediaDir;
+  if (dir && existsSync(dir)) {
+    try {
+      readdirSync(dir).filter(f => MEDIA_EXT.test(f))
+        .forEach(f => files.push({ name: f, url: `/media/${encodeURIComponent(f)}`, source: "folder" }));
+    } catch {}
+  }
+  res.json(files);
 });
 
+// Only uploaded files can be deleted (not files in the watched folder)
 app.delete("/api/media/:name", (req, res) => {
   const safe = path.basename(req.params.name);
   try { unlinkSync(path.join(UPLOADS_DIR, safe)); res.json({ ok: true }); }
   catch { res.status(404).json({ error: "Not found" }); }
+});
+
+// Set / clear the media folder path
+app.put("/api/config/mediadir", (req, res) => {
+  const { dir } = req.body;
+  if (!config.server) config.server = {};
+  config.server.mediaDir = dir || "";
+  saveConfig(config);
+  res.json({ ok: true, mediaDir: config.server.mediaDir });
 });
 
 // Status endpoint — consumed by launcher status page + external monitoring
