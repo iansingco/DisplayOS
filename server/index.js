@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getStats } from "./stats.js";
 import multer from "multer";
+import Bonjour from "bonjour-service";
 
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "config.json");
@@ -344,5 +345,10 @@ httpServer.listen(PORT, () => {
   console.log(`  Display → http://localhost:${PORT}/display?screen=main`);
   console.log(`  Admin   → http://localhost:${PORT}/admin`);
   console.log(`  Status  → http://localhost:${PORT}/api/status`);
-  console.log(`  LAN     → http://[your-ip]:${PORT}/display?screen=main\n`);
+  console.log(`  LAN     → http://[your-ip]:${PORT}/display?screen=main`);
+  console.log(`  mDNS    → http://displayos.local:${PORT}\n`);
+
+  // Advertise on LAN so ESP32s can find the server by name
+  const bonjour = new Bonjour();
+  bonjour.publish({ name: "DisplayOS", type: "http", port: PORT, host: "displayos.local" });
 });
